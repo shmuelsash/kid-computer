@@ -82,6 +82,8 @@ class Scene:
         self._glyph_font = pygame.font.SysFont(
             "Arial Black,Arial", int(min(self._ui.size) * frac), bold=True
         )
+        # Built once (not per frame); used for the early-mode word row.
+        self._word_font = pygame.font.SysFont("Consolas,Arial", 56, bold=True)
         self._word.clear()
         self._stars.clear()
 
@@ -146,14 +148,17 @@ class Scene:
         base = self._random_pos()
         color, glow = self._pick()
         self._spawn_cluster(base, color, glow)
-        char = event.unicode
-        if char and char.isprintable() and not char.isspace():
+        # Only render plain A-Z / 0-9. Anything else (symbols, accented or
+        # non-ASCII keys) is skipped rather than drawn as a "?" missing-glyph box.
+        char = event.unicode.upper()
+        renderable = len(char) == 1 and char.isascii() and char.isalnum()
+        if renderable:
             if self.mode.always_glyph or random.random() < 0.5:
-                self._add(Glyph(char.upper(), base, color, glow, self._glyph_font))
-            if self.mode.word_row and char.isalnum():
-                self._push_word(char.upper(), color)
-        if self.mode.counting_dots and char.isdigit() and char != "0":
-            self._spawn_counting(int(char), base)
+                self._add(Glyph(char, base, color, glow, self._glyph_font))
+            if self.mode.word_row:
+                self._push_word(char, color)
+            if self.mode.counting_dots and char.isdigit() and char != "0":
+                self._spawn_counting(int(char), base)
         if random.random() < 0.15:
             self._add(Ripple(base, color, max_radius=self._shape_radius() * 2.6))
         self.sounds.play_note()
@@ -286,8 +291,7 @@ class Scene:
             x += img.get_width() + 8
 
     def _glyph_render(self, char: str, color: tuple[int, int, int]) -> pygame.Surface:
-        font = pygame.font.SysFont("Consolas,Arial", 56, bold=True)
-        return font.render(char, True, color)
+        return self._word_font.render(char, True, color)
 
     def _draw_hint(self, surface: pygame.Surface) -> None:
         theme = self._theme()

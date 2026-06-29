@@ -6,10 +6,14 @@ from pathlib import Path
 import pytest
 
 from kidcomputer.updater import (
+    _ASSET_NAME,
+    _child_env,
     _find_asset_url,
     _is_valid_exe,
+    _old_path,
     _parse_version,
     check_and_update,
+    cleanup_leftovers,
     is_newer,
 )
 
@@ -93,3 +97,29 @@ def test_valid_exe_rejects_size_mismatch(tmp_path: Path) -> None:
     blob = b"MZ" + b"\x00" * 2_000_000
     path = _write(tmp_path / "ok.exe", blob)
     assert _is_valid_exe(path, expected_size=len(blob) + 5) is False
+
+
+def test_cleanup_removes_leftovers(tmp_path: Path) -> None:
+    old = _write(tmp_path / f"{_ASSET_NAME}.old", b"x")
+    new = _write(tmp_path / f"{_ASSET_NAME}.new", b"x")
+    keep = _write(tmp_path / f"{_ASSET_NAME}", b"x")
+    cleanup_leftovers(tmp_path)
+    assert not old.exists()
+    assert not new.exists()
+    assert keep.exists()  # the live exe is never touched
+
+
+def test_old_path_naming(tmp_path: Path) -> None:
+    assert _old_path(tmp_path / "KidComputer.exe").name == "KidComputer.exe.old"
+
+
+def test_child_env_strips_pyinstaller_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The relaunched exe must NOT inherit these, or it reuses the parent's temp
+    # extraction and bricks when the parent deletes it ("Failed to load Python DLL").
+    monkeypatch.setenv("_MEIPASS2", "C:/tmp/_MEI123")
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", "x")
+    monkeypatch.setenv("KIDCOMPUTER_KEEPME", "yes")
+    env = _child_env()
+    assert "_MEIPASS2" not in env
+    assert "_PYI_ARCHIVE_FILE" not in env
+    assert env.get("KIDCOMPUTER_KEEPME") == "yes"

@@ -12,6 +12,7 @@ because GitHub is unreachable.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -120,38 +121,72 @@ def _is_valid_exe(path: Path, expected_size: int = 0) -> bool:
         return False
 
 
-def _relaunch_with(new_exe: Path, current_exe: Path) -> None:
-    """Write a batch script that swaps in the new exe and relaunches it.
+def _old_path(current_exe: Path) -> Path:
+    return current_exe.with_name(current_exe.name + ".old")
 
-    The running exe can't be overwritten while it's open, so a detached cmd
-    *waits for this process (by PID) to actually exit* before moving the new exe
-    into place - a fixed sleep raced the file lock and could truncate the exe.
-    The move is an atomic same-folder rename; the file was already verified valid.
+
+def cleanup_leftovers(exe_dir: Path) -> None:
+    """Delete stale update files (.old from a prior swap, abandoned .new)."""
+    for leftover in (exe_dir / f"{_ASSET_NAME}.old", exe_dir / f"{_ASSET_NAME}.new"):
+        # The .old may briefly linger if AV holds it; ignore and retry next launch.
+        with contextlib.suppress(OSError):
+            leftover.unlink(missing_ok=True)
+
+
+def _relaunch_with(new_exe: Path, current_exe: Path) -> bool:
+    """Swap in the verified new exe and launch it. Returns True on success.
+
+    Windows lets you *rename* a running exe (you just can't overwrite it), so we
+    move the running file aside to ``.old``, atomically rename the verified new
+    file into its place, then launch it. No batch script, no fixed sleep, no
+    file-lock race - the class of bug that produced a truncated "Failed to load
+    Python DLL" exe. The ``.old`` is cleaned up on the next launch.
     """
-    pid = os.getpid()
-    script = current_exe.parent / "_kidcomputer_update.bat"
-    script.write_text(
-        "@echo off\r\n"
-        "setlocal enableextensions\r\n"
-        "set /a tries=0\r\n"
-        ":waitloop\r\n"
-        f'tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        "if errorlevel 1 goto doswap\r\n"
-        "set /a tries+=1\r\n"
-        "if %tries% gtr 30 goto doswap\r\n"
-        "ping 127.0.0.1 -n 2 >nul\r\n"
-        "goto waitloop\r\n"
-        ":doswap\r\n"
-        f'move /y "{new_exe}" "{current_exe}" >nul\r\n'
-        f'start "" "{current_exe}"\r\n'
-        'del "%~f0"\r\n',
-        encoding="ascii",
-    )
-    subprocess.Popen(  # noqa: S603
-        ["cmd", "/c", str(script)],
-        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
-        close_fds=True,
-    )
+    old = _old_path(current_exe)
+    try:
+        old.unlink(missing_ok=True)
+        os.replace(current_exe, old)  # rename the running exe out of the way
+        os.replace(new_exe, current_exe)  # drop the verified new one in place
+    except OSError as exc:
+        logger.error("Update swap failed (%s); rolling back.", exc)
+        _rollback(old, current_exe)
+        return False
+    try:
+        subprocess.Popen(  # noqa: S603
+            [str(current_exe)],
+            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
+            close_fds=True,
+            cwd=str(current_exe.parent),
+            env=_child_env(),
+        )
+    except OSError as exc:
+        logger.error("Could not launch updated exe: %s", exc)
+        return False
+    return True
+
+
+def _child_env() -> dict[str, str]:
+    """Environment for the relaunched exe with PyInstaller's onefile vars removed.
+
+    THE fix for the update-bricking bug: a child spawned from a onefile exe
+    inherits ``_MEIPASS2`` / ``_PYI_*``, which tell it to REUSE the parent's temp
+    extraction. When the parent then exits it deletes that folder, and the child's
+    python DLL/base_library.zip vanish mid-run ("Failed to load Python DLL").
+    Stripping these vars forces the child to extract its own fresh copy.
+    """
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if not (key.startswith("_MEIPASS") or key.startswith("_PYI"))
+    }
+
+
+def _rollback(old: Path, current_exe: Path) -> None:
+    if old.exists() and not current_exe.exists():
+        try:
+            os.replace(old, current_exe)
+        except OSError:
+            logger.error("Rollback failed; current exe may be at %s", old)
 
 
 def check_and_update(repo: str, current_version: str, *, is_frozen: bool) -> bool:
@@ -164,6 +199,8 @@ def check_and_update(repo: str, current_version: str, *, is_frozen: bool) -> boo
         logger.info("Dev run: skipping self-update.")
         return False
 
+    current_exe = Path(sys.executable)
+    cleanup_leftovers(current_exe.parent)
     release = fetch_latest_release(repo)
     if release is None:
         return False
@@ -179,7 +216,6 @@ def check_and_update(repo: str, current_version: str, *, is_frozen: bool) -> boo
         return False
 
     logger.info("Updating from v%s to %s ...", current_version, latest_tag)
-    current_exe = Path(sys.executable)
     download = current_exe.parent / f"{_ASSET_NAME}.new"
     if not _download(asset.get("browser_download_url", ""), download):
         return False
@@ -188,7 +224,8 @@ def check_and_update(repo: str, current_version: str, *, is_frozen: bool) -> boo
         download.unlink(missing_ok=True)
         return False
 
-    _relaunch_with(download, current_exe)
+    if not _relaunch_with(download, current_exe):
+        return False
     logger.info("Update downloaded; relaunching into %s.", latest_tag)
     return True
 
@@ -203,6 +240,7 @@ def run_update(repo: str, current_version: str, status: UpdateStatus, *, is_froz
         status.phase = "disabled"
         status.done = True
         return
+    cleanup_leftovers(Path(sys.executable).parent)
     release = fetch_latest_release(repo)
     if release is None:
         _finish(status, "error")
@@ -237,9 +275,11 @@ def _download_and_relaunch(
         dest.unlink(missing_ok=True)
         _finish(status, "error")
         return
-    _relaunch_with(dest, current_exe)
-    status.relaunch = True
-    _finish(status, "relaunching")
+    if _relaunch_with(dest, current_exe):
+        status.relaunch = True
+        _finish(status, "relaunching")
+    else:
+        _finish(status, "error")
 
 
 def _finish(status: UpdateStatus, phase: str) -> None:

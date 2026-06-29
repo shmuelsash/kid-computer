@@ -39,11 +39,16 @@ are carried over:
   An always-visible on-screen hint tells the grown-up how to get out.
 - **Auto-update must fail open** - a network/HTTP error logs WARNING and the
   current build keeps running; it never blocks the child's session.
-- **Never swap in an unverified exe.** Before replacing the running exe, the
-  download must be complete (Content-Length match) and pass `_is_valid_exe`
-  (exact published asset size + PE 'MZ' magic). The relaunch batch waits for the
-  old process to exit by PID before the atomic same-folder move. A truncated swap
-  once bricked an install ("Failed to load Python DLL") - do not regress this.
+- **Self-update must not brick the install ("Failed to load Python DLL").** Two
+  things are required and must not regress:
+  1. **Scrub PyInstaller env vars (`_MEIPASS2`, `_PYI_*`) from the relaunched
+     exe's environment** (`_child_env`). Otherwise the child reuses the parent's
+     onefile temp extraction, which the parent deletes on exit, killing the
+     child mid-run. This was the actual root cause.
+  2. **Swap safely**: verify the download (`_is_valid_exe`: exact published size +
+     PE 'MZ' magic) before swapping; rename the running exe to `.old`, atomically
+     rename the verified new exe into place, then launch it (no overwrite-in-place,
+     no batch race). Clean up `.old`/`.new` on next launch (`cleanup_leftovers`).
 - **Every WinAPI ctypes call declares `argtypes` + `restype`.** Without them,
   ctypes truncates 64-bit handles/`LRESULT` to 32 bits on Win64 and the keyboard
   hook silently fails to install (the keys-not-blocked bug). The `_HOOKPROC`
