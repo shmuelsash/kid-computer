@@ -69,11 +69,16 @@ def fetch_latest_release(repo: str) -> dict | None:
         return None
 
 
-def _find_asset_url(release: dict) -> str | None:
+def _find_asset(release: dict) -> dict | None:
     for asset in release.get("assets", []):
         if asset.get("name") == _ASSET_NAME:
-            return asset.get("browser_download_url")
+            return asset
     return None
+
+
+def _find_asset_url(release: dict) -> str | None:
+    asset = _find_asset(release)
+    return asset.get("browser_download_url") if asset else None
 
 
 def _download(url: str, dest: Path, on_progress: Callable[[float], None] | None = None) -> bool:
@@ -87,6 +92,9 @@ def _download(url: str, dest: Path, on_progress: Callable[[float], None] | None 
                     read += len(chunk)
                     if on_progress and total:
                         on_progress(min(1.0, read / total))
+        if total and read != total:
+            logger.warning("Update download incomplete: %d of %d bytes.", read, total)
+            return False
         if on_progress:
             on_progress(1.0)
         return True
@@ -95,17 +103,45 @@ def _download(url: str, dest: Path, on_progress: Callable[[float], None] | None 
         return False
 
 
+def _is_valid_exe(path: Path, expected_size: int = 0) -> bool:
+    """Guard against swapping in a truncated/corrupt exe (the bug that bricked an
+    install): require the PE 'MZ' magic, a sane size, and an exact size match to
+    the published asset when we know it."""
+    try:
+        size = path.stat().st_size
+        if expected_size and size != expected_size:
+            logger.warning("Update size mismatch: %d != %d expected.", size, expected_size)
+            return False
+        if size < 1_000_000:
+            return False
+        with open(path, "rb") as handle:
+            return handle.read(2) == b"MZ"
+    except OSError:
+        return False
+
+
 def _relaunch_with(new_exe: Path, current_exe: Path) -> None:
     """Write a batch script that swaps in the new exe and relaunches it.
 
-    The running exe can't overwrite itself, so a detached cmd waits for this
-    process to exit, copies the download over the current file, restarts it, and
-    deletes itself.
+    The running exe can't be overwritten while it's open, so a detached cmd
+    *waits for this process (by PID) to actually exit* before moving the new exe
+    into place - a fixed sleep raced the file lock and could truncate the exe.
+    The move is an atomic same-folder rename; the file was already verified valid.
     """
+    pid = os.getpid()
     script = current_exe.parent / "_kidcomputer_update.bat"
     script.write_text(
         "@echo off\r\n"
+        "setlocal enableextensions\r\n"
+        "set /a tries=0\r\n"
+        ":waitloop\r\n"
+        f'tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
+        "if errorlevel 1 goto doswap\r\n"
+        "set /a tries+=1\r\n"
+        "if %tries% gtr 30 goto doswap\r\n"
         "ping 127.0.0.1 -n 2 >nul\r\n"
+        "goto waitloop\r\n"
+        ":doswap\r\n"
         f'move /y "{new_exe}" "{current_exe}" >nul\r\n'
         f'start "" "{current_exe}"\r\n'
         'del "%~f0"\r\n',
@@ -137,15 +173,19 @@ def check_and_update(repo: str, current_version: str, *, is_frozen: bool) -> boo
         logger.info("Already up to date (running v%s).", current_version)
         return False
 
-    asset_url = _find_asset_url(release)
-    if asset_url is None:
+    asset = _find_asset(release)
+    if asset is None:
         logger.warning("Release %s has no %s asset.", latest_tag, _ASSET_NAME)
         return False
 
     logger.info("Updating from v%s to %s ...", current_version, latest_tag)
     current_exe = Path(sys.executable)
     download = current_exe.parent / f"{_ASSET_NAME}.new"
-    if not _download(asset_url, download):
+    if not _download(asset.get("browser_download_url", ""), download):
+        return False
+    if not _is_valid_exe(download, int(asset.get("size", 0))):
+        logger.warning("Update verification failed; keeping current build.")
+        download.unlink(missing_ok=True)
         return False
 
     _relaunch_with(download, current_exe)
@@ -171,15 +211,17 @@ def run_update(repo: str, current_version: str, status: UpdateStatus, *, is_froz
     if not is_newer(tag, current_version):
         _finish(status, "uptodate")
         return
-    asset_url = _find_asset_url(release)
-    if asset_url is None:
+    asset = _find_asset(release)
+    if asset is None:
         logger.warning("Release %s has no %s asset.", tag, _ASSET_NAME)
         _finish(status, "error")
         return
-    _download_and_relaunch(asset_url, tag, current_version, status)
+    _download_and_relaunch(asset, tag, current_version, status)
 
 
-def _download_and_relaunch(url: str, tag: str, current_version: str, status: UpdateStatus) -> None:
+def _download_and_relaunch(
+    asset: dict, tag: str, current_version: str, status: UpdateStatus
+) -> None:
     status.phase = "downloading"
     status.target = tag
     current_exe = Path(sys.executable)
@@ -189,7 +231,10 @@ def _download_and_relaunch(url: str, tag: str, current_version: str, status: Upd
         status.progress = fraction
 
     logger.info("Updating from v%s to %s ...", current_version, tag)
-    if not _download(url, dest, report):
+    ok = _download(asset.get("browser_download_url", ""), dest, report)
+    if not ok or not _is_valid_exe(dest, int(asset.get("size", 0))):
+        logger.warning("Update verification failed; keeping current build.")
+        dest.unlink(missing_ok=True)
         _finish(status, "error")
         return
     _relaunch_with(dest, current_exe)

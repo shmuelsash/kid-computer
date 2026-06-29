@@ -1,9 +1,17 @@
 """Version comparison drives auto-update; a wrong answer ships a downgrade or
 skips a real update."""
 
+from pathlib import Path
+
 import pytest
 
-from kidcomputer.updater import _find_asset_url, _parse_version, check_and_update, is_newer
+from kidcomputer.updater import (
+    _find_asset_url,
+    _is_valid_exe,
+    _parse_version,
+    check_and_update,
+    is_newer,
+)
 
 
 @pytest.mark.parametrize(
@@ -56,3 +64,32 @@ def test_find_asset_url_missing() -> None:
 def test_no_update_when_not_frozen() -> None:
     # In a dev run there is no single exe to swap, so it must never act.
     assert check_and_update("owner/repo", "1.0.0", is_frozen=False) is False
+
+
+def _write(path: Path, data: bytes) -> Path:
+    path.write_bytes(data)
+    return path
+
+
+def test_valid_exe_accepts_real_pe(tmp_path: Path) -> None:
+    # 'MZ' magic + over the 1MB minimum + exact expected size.
+    blob = b"MZ" + b"\x00" * (2_000_000 - 2)
+    path = _write(tmp_path / "ok.exe", blob)
+    assert _is_valid_exe(path, expected_size=len(blob)) is True
+
+
+def test_valid_exe_rejects_truncated(tmp_path: Path) -> None:
+    # The exact failure that bricked the install: a short/partial download.
+    path = _write(tmp_path / "short.exe", b"MZ" + b"\x00" * 1000)
+    assert _is_valid_exe(path) is False
+
+
+def test_valid_exe_rejects_wrong_magic(tmp_path: Path) -> None:
+    path = _write(tmp_path / "html.exe", b"<!DOCTYPE html>" + b"\x00" * 2_000_000)
+    assert _is_valid_exe(path) is False
+
+
+def test_valid_exe_rejects_size_mismatch(tmp_path: Path) -> None:
+    blob = b"MZ" + b"\x00" * 2_000_000
+    path = _write(tmp_path / "ok.exe", blob)
+    assert _is_valid_exe(path, expected_size=len(blob) + 5) is False
