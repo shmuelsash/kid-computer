@@ -16,6 +16,7 @@ import pygame
 from kidcomputer import buildinfo
 from kidcomputer.audio import SoundBank
 from kidcomputer.config import GITHUB_REPO, Settings
+from kidcomputer.display import create_surface, make_dpi_aware
 from kidcomputer.exit_watcher import ExitWatcher
 from kidcomputer.keyboard_lock import KeyboardLock
 from kidcomputer.logging_setup import setup_logging
@@ -24,14 +25,7 @@ from kidcomputer.updater import check_and_update, is_frozen
 
 logger = logging.getLogger(__name__)
 
-_WINDOWED_SIZE = (1280, 800)
 _FPS = 60
-
-
-def _create_screen(fullscreen: bool) -> pygame.Surface:
-    if fullscreen:
-        return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    return pygame.display.set_mode(_WINDOWED_SIZE)
 
 
 def _read_exit_keys() -> tuple[bool, bool, bool]:
@@ -88,6 +82,9 @@ def main() -> int:
     ):
         return 0  # an update was launched; exit so the swap can complete
 
+    # Declare DPI awareness BEFORE creating any window, or Windows reports a
+    # scaled-down resolution and the whole UI renders blurry and small.
+    make_dpi_aware()
     pygame.init()
     pygame.display.set_caption("Kid Computer")
     sounds = SoundBank(enabled=settings.sound_enabled)
@@ -95,7 +92,7 @@ def main() -> int:
 
     lock = KeyboardLock()
     try:
-        screen = _create_screen(settings.fullscreen)
+        screen = create_surface(settings.fullscreen)
         pygame.event.set_grab(True)
         lock.start()
         scene = Scene(screen.get_size(), sounds)

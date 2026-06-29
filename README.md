@@ -12,8 +12,12 @@ sounds**. The only way out is a secret grown-up combo.
 ## What it does
 
 - **Locks the escape routes.** A low-level Windows keyboard hook swallows the
-  Windows key, Alt+Tab, Alt+F4, Alt+Esc, Ctrl+Esc, and the context-menu key.
-  Ordinary keys still flow through to drive the fun.
+  Windows key (and every Win+<key> combo, including Win+Tab/Win+D), Alt+Tab,
+  Ctrl+Alt+Tab, Alt+F4, Alt+Esc, Ctrl+Esc, Ctrl+Shift+Esc, and the context-menu
+  key. Ordinary keys still flow through to drive the fun.
+- **Covers every screen, at full resolution.** Runs DPI-aware (sharp, native
+  resolution - no blurry upscaling) and spans a borderless top-most window across
+  **all connected monitors**, so a second screen is covered too.
 - **Reacts to everything.** Each key spawns a big spinning shape and the pressed
   letter/number, with a cheerful musical note. Mouse clicks set off fireworks +
   a chime. Moving the mouse leaves a sparkle trail. Little "windows" pop open and
@@ -106,6 +110,7 @@ To cut a release: merge to `main`. To bump the human-facing major/minor, edit th
 | Module | Responsibility |
 |---|---|
 | `app.py` | Main loop; wires everything; **always releases the lock in `finally`** |
+| `display.py` | DPI awareness + borderless window spanning all monitors |
 | `keyboard_lock.py` | Windows `WH_KEYBOARD_LL` hook; pure `should_block()` decision |
 | `exit_watcher.py` | Pure hold-combo timer (Ctrl+Alt+Q), injectable clock |
 | `scene.py` | Turns input into effects + sound; background, hint, exit ring |

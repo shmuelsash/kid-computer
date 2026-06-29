@@ -39,6 +39,12 @@ are carried over:
   An always-visible on-screen hint tells the grown-up how to get out.
 - **Auto-update must fail open** - a network/HTTP error logs WARNING and the
   current build keeps running; it never blocks the child's session.
+- **Every WinAPI ctypes call declares `argtypes` + `restype`.** Without them,
+  ctypes truncates 64-bit handles/`LRESULT` to 32 bits on Win64 and the keyboard
+  hook silently fails to install (the keys-not-blocked bug). The `_HOOKPROC`
+  return type must be `LRESULT` (`c_ssize_t`), never `c_long`.
+- **DPI awareness is declared before any window is created** (`make_dpi_aware()`
+  first in `main`), or Windows reports a scaled resolution and the UI is blurry.
 - **`.ps1` files are ASCII-only** (house rule) - no em dashes or curly quotes.
 
 ## What can't be blocked (by Windows design)
@@ -49,8 +55,9 @@ Don't try to "fix" this with registry/Group-Policy hacks unless explicitly asked
 
 ## Layout
 
-- `kidcomputer/` - package: `app` (loop), `keyboard_lock`, `exit_watcher`,
-  `scene`, `effects`, `audio`, `updater`, `config`, `logging_setup`, `buildinfo`.
+- `kidcomputer/` - package: `app` (loop), `display` (DPI + multi-monitor),
+  `keyboard_lock`, `exit_watcher`, `scene`, `effects`, `audio`, `updater`,
+  `config`, `logging_setup`, `buildinfo`.
 - `tests/` - pytest, headless (SDL dummy drivers).
 - `.github/workflows/` - `ci.yml` (gate) and `release.yml` (gate -> build -> release).
 

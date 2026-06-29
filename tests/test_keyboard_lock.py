@@ -1,5 +1,8 @@
 """The lock must swallow escape routes and pass ordinary keys through."""
 
+import ctypes
+
+from kidcomputer import keyboard_lock
 from kidcomputer.keyboard_lock import (
     VK_APPS,
     VK_ESCAPE,
@@ -9,6 +12,12 @@ from kidcomputer.keyboard_lock import (
     VK_TAB,
     should_block,
 )
+
+
+def test_hookproc_returns_64bit_lresult() -> None:
+    # Regression guard: a 32-bit (c_long) return type truncates LRESULT on Win64
+    # and breaks the hook chain. It must be pointer-width (c_ssize_t).
+    assert keyboard_lock._HOOKPROC._restype_ is ctypes.c_ssize_t
 
 
 def test_blocks_windows_keys() -> None:

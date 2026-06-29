@@ -75,11 +75,17 @@ class Shape(Effect):
 
     def draw(self, surface: pygame.Surface) -> None:
         radius = self._radius()
+        angle = self.age * self.spin
+        alpha = self._alpha()
+        # Fast path: while fully opaque (most of the shape's life), draw straight
+        # to the screen - no per-frame translucent surface allocation. This keeps
+        # things smooth at 4K / spanning monitors.
+        if alpha >= 255:
+            _draw_kind(surface, self.kind, self.pos, radius, self.color, angle)
+            return
         layer = pygame.Surface((radius * 2 + 4, radius * 2 + 4), pygame.SRCALPHA)
         center = (radius + 2, radius + 2)
-        color = (*self.color, self._alpha())
-        angle = self.age * self.spin
-        _draw_kind(layer, self.kind, center, radius, color, angle)
+        _draw_kind(layer, self.kind, center, radius, (*self.color, alpha), angle)
         surface.blit(layer, (self.pos[0] - center[0], self.pos[1] - center[1]))
 
 
@@ -88,7 +94,7 @@ def _draw_kind(
     kind: str,
     center: tuple[int, int],
     radius: int,
-    color: tuple[int, int, int, int],
+    color: tuple[int, ...],  # RGB or RGBA - pygame.draw accepts both
     angle: float,
 ) -> None:
     if kind == "circle":
