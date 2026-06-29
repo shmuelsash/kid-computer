@@ -1,0 +1,58 @@
+[project]
+name = "kid-computer"
+version = "1.0.0"
+description = "A full-screen 'baby smash' app: locks the keyboard and turns a toddler's mashing into lights, shapes, and happy sounds. Self-updates from GitHub Releases."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "shmuelsash" }]
+dependencies = [
+    "pygame-ce>=2.5.0",
+    "numpy>=2.0.0",
+]
+
+[project.scripts]
+kid-computer = "kidcomputer.app:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "mypy>=1.11.0",
+    "ruff>=0.6.0",
+    "pyinstaller>=6.10.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kidcomputer"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = pyflakes+pycodestyle, I = import sort, UP = pyupgrade, B = bugbear,
+# C90 = mccabe complexity, SIM = simplify. These give us the starter-kit's
+# "shallow, DRY, readable" gate with teeth.
+select = ["E", "F", "I", "UP", "B", "C90", "SIM"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.mypy]
+python_version = "3.12"
+# This app is Windows-only; pin the platform so ctypes.windll type-checks the
+# same way on the (Linux) CI checks runner as it does on Windows.
+platform = "win32"
+disallow_untyped_defs = true
+warn_redundant_casts = true
+no_implicit_optional = true
+ignore_missing_imports = true
+files = ["kidcomputer", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

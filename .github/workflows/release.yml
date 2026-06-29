@@ -1,0 +1,74 @@
+name: Release
+
+# Push to main -> run the quality gate, then build a fresh Windows exe and
+# publish it as a GitHub Release. The running app auto-updates from these.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write # needed to create releases and upload assets
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+      - run: uv run pytest
+
+  build:
+    needs: checks # the gate runs first; a failure means no exe is ever built
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Compute version and bake provenance
+        shell: bash
+        run: |
+          BASE=$(tr -d '[:space:]' < VERSION)
+          VERSION="${BASE}.${GITHUB_RUN_NUMBER}"
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          cat > kidcomputer/_generated_buildinfo.py <<EOF
+          VERSION = "${VERSION}"
+          GIT_SHA = "${GITHUB_SHA}"
+          BUILD_TIME = "${BUILD_TIME}"
+          CHANNEL = "release"
+          EOF
+          echo "Building version ${VERSION} from ${GITHUB_SHA}"
+
+      - name: Build exe
+        run: uv run pyinstaller --noconfirm --onefile --windowed --name KidComputer app_entry.py
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${VERSION}" \
+            dist/KidComputer.exe \
+            --title "v${VERSION}" \
+            --notes "Automated build from commit ${GITHUB_SHA}." \
+            --latest

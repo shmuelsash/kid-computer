@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Build artifacts (PyInstaller). The build uses CLI flags, so the generated
+# .spec is a disposable artifact, not source.
+build/
+dist/
+*.spec
+
+# Generated at build time by CI (provenance is baked into the exe, not committed)
+kidcomputer/_generated_buildinfo.py
+
+# Local runtime logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
