@@ -57,6 +57,11 @@ are carried over:
   first in `main`), or Windows reports a scaled resolution and the UI is blurry.
 - **`.ps1` files are ASCII-only** (house rule) - no em dashes or curly quotes.
 
+- **Touchpad gestures are disabled via HKCU PrecisionTouchPad and MUST be
+  restored on exit** (`TouchpadGestureLock.stop` in the `finally`). Three/four-
+  finger swipes aren't keyboard events, so the hook can't see them; we toggle the
+  per-user setting instead. Never leave them disabled after the app exits.
+
 ## What can't be blocked (by Windows design)
 
 A user-mode app cannot block **Ctrl+Alt+Del** or **Win+L**. These are OS safety

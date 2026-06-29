@@ -24,6 +24,7 @@ from kidcomputer.keyboard_lock import KeyboardLock
 from kidcomputer.logging_setup import setup_logging
 from kidcomputer.scene import Scene
 from kidcomputer.theme import Theme, get_theme
+from kidcomputer.touchpad import TouchpadGestureLock
 from kidcomputer.updater import UpdateStatus, is_frozen, run_update
 
 logger = logging.getLogger(__name__)
@@ -173,9 +174,11 @@ def main() -> int:
     sounds.init()
     state = {"running": True}
     lock = KeyboardLock()
+    touchpad = TouchpadGestureLock()
     try:
         pygame.event.set_grab(True)
         lock.start()
+        touchpad.start()
         scene = Scene(
             screen.get_size(), ui_rect, sounds, store, on_exit=lambda: state.update(running=False)
         )
@@ -183,9 +186,10 @@ def main() -> int:
         _run_loop(screen, scene, settings, state)
     finally:
         lock.stop()
+        touchpad.stop()
         pygame.event.set_grab(False)
         pygame.quit()
-        logger.info("Kid Computer stopped. Keyboard released.")
+        logger.info("Kid Computer stopped. Input restored.")
     return 0
 
 

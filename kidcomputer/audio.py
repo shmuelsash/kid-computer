@@ -35,8 +35,8 @@ _PENTATONIC_HZ = (
 
 def make_tone(
     freq: float,
-    duration: float = 0.35,
-    volume: float = 0.5,
+    duration: float = 0.32,
+    volume: float = 0.22,
     *,
     sample_rate: int = SAMPLE_RATE,
     harmonics: tuple[float, ...] = (1.0, 0.35, 0.15),
@@ -71,7 +71,7 @@ def _envelope(n_samples: int, sample_rate: int) -> np.ndarray:
     return env * decay
 
 
-def make_chime(volume: float = 0.5) -> np.ndarray:
+def make_chime(volume: float = 0.34) -> np.ndarray:
     """A short two-note 'win' chime for mouse clicks / fireworks."""
     low = make_tone(_PENTATONIC_HZ[4], duration=0.18, volume=volume)
     high = make_tone(_PENTATONIC_HZ[7], duration=0.30, volume=volume)
@@ -95,7 +95,9 @@ class SoundBank:
             import pygame
 
             pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=512)
-            pygame.mixer.set_num_channels(32)
+            # Cap simultaneous voices: many notes summing past int16 clips/distorts.
+            # When all are busy, a new note simply doesn't play (no overload).
+            pygame.mixer.set_num_channels(8)
             self._notes = [pygame.sndarray.make_sound(make_tone(hz)) for hz in _PENTATONIC_HZ]
             self._chime = pygame.sndarray.make_sound(make_chime())
             logger.info("Audio ready: %d notes + chime.", len(self._notes))

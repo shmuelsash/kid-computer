@@ -37,6 +37,9 @@ _GEAR_IDLE_HIDE = 3.0
 _EXIT_HINT = "Grown-ups: hold  Ctrl + Alt + Q  to exit"
 _MAX_WORD = 14
 _LINK_LIFE = 2.5
+# Minimum gap between note triggers - stops a key-mash from stacking dozens of
+# overlapping notes into a clipped, distorted wall of sound.
+_NOTE_MIN_INTERVAL = 0.045
 
 
 class Scene:
@@ -58,6 +61,7 @@ class Scene:
         self._mouse_trail = 0.0
         self._mouse_idle = 0.0
         self._ambient = 0.0
+        self._since_note = _NOTE_MIN_INTERVAL
         self._hint_font = pygame.font.SysFont("Segoe UI,Arial", max(16, min(ui_rect.size) // 45))
         self._panel = SettingsPanel(store, self._theme, self._apply_setting, on_exit)
         self._panel.set_ui_rect(ui_rect)
@@ -161,7 +165,9 @@ class Scene:
                 self._spawn_counting(int(char), base)
         if random.random() < 0.15:
             self._add(Ripple(base, color, max_radius=self._shape_radius() * 2.6))
-        self.sounds.play_note()
+        if self._since_note >= _NOTE_MIN_INTERVAL:
+            self.sounds.play_note()
+            self._since_note = 0.0
 
     def _spawn_cluster(
         self, base: tuple[int, int], color: tuple[int, int, int], glow: pygame.Surface
@@ -225,6 +231,7 @@ class Scene:
 
     def update(self, dt: float) -> None:
         self._mouse_idle += dt
+        self._since_note += dt
         self._update_trail(dt)
         self._update_ambient(dt)
         self._update_stars(dt)

@@ -14,7 +14,9 @@ sounds**. The only way out is a secret grown-up combo.
 - **Locks the escape routes.** A low-level Windows keyboard hook swallows the
   Windows key (and every Win+<key> combo, including Win+Tab/Win+D), Alt+Tab,
   Ctrl+Alt+Tab, Alt+F4, Alt+Esc, Ctrl+Esc, Ctrl+Shift+Esc, and the context-menu
-  key. Ordinary keys still flow through to drive the fun.
+  key. It also disables **precision-touchpad three/four-finger gestures**
+  (swipe/tap to Task View, show desktop, etc.) for the session and restores them
+  on exit. Ordinary keys and clicks still flow through to drive the fun.
 - **Covers every screen, at full resolution.** Runs DPI-aware (sharp, native
   resolution - no blurry upscaling) and spans a borderless top-most window across
   **all connected monitors**, so a second screen is covered too.
@@ -47,6 +49,10 @@ will hit. It **cannot** block two keys, by Windows design:
 Truly disabling those would require Group Policy / kiosk-mode lockdown of the
 whole PC, which is out of scope for a simple app. In practice they're not keys a
 toddler stumbles into, and neither causes harm.
+
+Touchpad gestures are disabled via the per-user PrecisionTouchPad settings while
+the app runs (restored on exit). On most machines this applies immediately; on
+some, a one-time sign-out may be needed for it to fully take effect.
 
 ## Install (for a parent, no coding needed)
 
@@ -121,6 +127,7 @@ To cut a release: merge to `main`. To bump the human-facing major/minor, edit th
 | `app.py` | Main loop + update splash; wires everything; **always releases the lock in `finally`** |
 | `display.py` | DPI awareness + borderless window spanning all monitors; primary-monitor `ui_rect` |
 | `keyboard_lock.py` | Windows `WH_KEYBOARD_LL` hook; pure `should_block()` decision |
+| `touchpad.py` | Disables precision-touchpad 3/4-finger gestures (restores on exit) |
 | `exit_watcher.py` | Pure hold-combo timer (Ctrl+Alt+Q), injectable clock |
 | `scene.py` | Per-age-mode spawning; themed background, hint, gear, AA exit ring |
 | `effects.py` | Glowing shapes, glyphs, fireworks, sparkles, ripples, bokeh, friends, constellation |
