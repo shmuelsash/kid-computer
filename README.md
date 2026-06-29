@@ -18,15 +18,20 @@ sounds**. The only way out is a secret grown-up combo.
 - **Covers every screen, at full resolution.** Runs DPI-aware (sharp, native
   resolution - no blurry upscaling) and spans a borderless top-most window across
   **all connected monitors**, so a second screen is covered too.
-- **Reacts to everything.** Each key spawns a big spinning shape and the pressed
-  letter/number, with a cheerful musical note. Mouse clicks set off fireworks +
-  a chime. Moving the mouse leaves a sparkle trail. Little "windows" pop open and
-  closed, the background gently shifts color, and there's always something moving
-  even when no one's touching it.
-- **Toddler-tuned.** Big bold shapes, well-saturated colors, soft (non-strobing)
-  color washes, and a pentatonic sound bank so random mashing always sounds nice.
-- **Self-updating.** When you run the `.exe`, it checks GitHub for a newer build
-  and updates itself automatically. No app store, no manual download.
+- **Reacts to everything.** Keys spawn glowing shapes and the pressed
+  letter/number with a cheerful pentatonic note; clicks set off fireworks + a
+  chime; the mouse leaves a sparkle trail; soft bokeh and ripples drift in the
+  background. All anti-aliased with a gentle bloom on a deep gradient.
+- **Three age modes** (switchable in Settings): **Toddler - Bubbles & Booms**
+  (big, slow, simple); **Preschool - Letters & Friends** (letters/numbers,
+  counting dots, smiley shapes); **Early school - Cosmic Maker** (kaleidoscope
+  symmetry, constellations, word building).
+- **Three themes** - Aurora, Candy, Minimal - plus an **effect-intensity** slider,
+  a **sound** toggle, and a **log-level** selector. All in a settings card opened
+  by the auto-hiding gear (top-right), and **saved between runs**.
+- **Self-updating, visibly.** On launch it shows a "Checking for updates..." /
+  "Downloading vX - NN%" splash, then updates itself from GitHub and relaunches.
+  No app store, no manual download.
 
 ## What it can and can't lock (please read)
 
@@ -49,7 +54,9 @@ toddler stumbles into, and neither causes harm.
 2. Double-click it. (Windows SmartScreen may warn about an unsigned app the first
    time - choose **More info -> Run anyway**.)
 3. It goes full-screen and locks the keyboard. Let your child play.
-4. To quit: hold **Ctrl + Alt + Q** for 2 seconds.
+4. Move the mouse to the **top-right gear** to open Settings (age mode, theme,
+   intensity, sound). Choices are remembered next time.
+5. To quit: hold **Ctrl + Alt + Q** for 2 seconds (or use the Exit button in Settings).
 
 The next time you run it, if a newer version exists it updates itself first, then
 launches.
@@ -74,14 +81,16 @@ On Windows without `make`, use the scripts: `./dev.ps1`, `./build.ps1`, or
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
+| `LOG_LEVEL` | `INFO` | Initial level (`DEBUG`/`INFO`/`WARNING`/`ERROR`); also changeable live in Settings |
 | `KIDCOMPUTER_FULLSCREEN` | `1` | `0` = windowed (handy for dev) |
-| `KIDCOMPUTER_SOUND` | `1` | `0` = mute |
+| `KIDCOMPUTER_SOUND` | `1` | Initial mute default; also toggled in Settings |
 | `KIDCOMPUTER_AUTO_UPDATE` | `1` | `0` = skip the update check |
 | `EXIT_HOLD_SECONDS` | `2.0` | How long the exit combo must be held |
 
-Logs go to stdout and to a rotating file at
-`%LOCALAPPDATA%\KidComputer\kid-computer.log`.
+User-facing preferences (age mode, theme, intensity, sound, log level) are
+changed in the in-app Settings card and persisted to
+`%LOCALAPPDATA%\KidComputer\settings.json`. Logs go to stdout and to a rotating
+file at `%LOCALAPPDATA%\KidComputer\kid-computer.log`.
 
 ## How shipping works
 
@@ -109,15 +118,18 @@ To cut a release: merge to `main`. To bump the human-facing major/minor, edit th
 
 | Module | Responsibility |
 |---|---|
-| `app.py` | Main loop; wires everything; **always releases the lock in `finally`** |
-| `display.py` | DPI awareness + borderless window spanning all monitors |
+| `app.py` | Main loop + update splash; wires everything; **always releases the lock in `finally`** |
+| `display.py` | DPI awareness + borderless window spanning all monitors; primary-monitor `ui_rect` |
 | `keyboard_lock.py` | Windows `WH_KEYBOARD_LL` hook; pure `should_block()` decision |
 | `exit_watcher.py` | Pure hold-combo timer (Ctrl+Alt+Q), injectable clock |
-| `scene.py` | Turns input into effects + sound; background, hint, exit ring |
-| `effects.py` | Shapes, glyphs, fireworks, sparkles, pop-up windows |
+| `scene.py` | Per-age-mode spawning; themed background, hint, gear, AA exit ring |
+| `effects.py` | Glowing shapes, glyphs, fireworks, sparkles, ripples, bokeh, friends, constellation |
+| `render.py` | numpy gradient + bloom-glow sprites + anti-aliased ring |
+| `theme.py` / `modes.py` | Theme palettes (Aurora/Candy/Minimal) and age-mode behavior configs |
+| `settings_panel.py` | The gear's glass settings card (hit-testing + live apply) |
 | `audio.py` | numpy-synthesized pentatonic notes + chime |
-| `updater.py` | GitHub Releases check + download + self-replace |
-| `config.py` / `logging_setup.py` / `buildinfo.py` | settings, logging, provenance |
+| `updater.py` | Threaded GitHub Releases check + download (progress) + self-replace |
+| `config.py` / `logging_setup.py` / `buildinfo.py` | settings store, logging, provenance |
 
 Design decisions are recorded in [docs/adr/](docs/adr/). The engineering
 standards this repo follows live in

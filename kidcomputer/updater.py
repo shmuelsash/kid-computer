@@ -19,6 +19,8 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,18 @@ logger = logging.getLogger(__name__)
 _API_TIMEOUT = 6.0
 _DOWNLOAD_TIMEOUT = 120.0
 _ASSET_NAME = "KidComputer.exe"
+_CHUNK = 64 * 1024
+
+
+@dataclass
+class UpdateStatus:
+    """Shared state between the update worker thread and the splash screen."""
+
+    phase: str = "checking"  # checking | downloading | uptodate | relaunching | error | disabled
+    progress: float = 0.0  # 0..1 during download
+    target: str = ""  # tag being downloaded
+    done: bool = False
+    relaunch: bool = False  # True once the new exe has been launched
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -62,10 +76,19 @@ def _find_asset_url(release: dict) -> str | None:
     return None
 
 
-def _download(url: str, dest: Path) -> bool:
+def _download(url: str, dest: Path, on_progress: Callable[[float], None] | None = None) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT) as resp:  # noqa: S310
-            dest.write_bytes(resp.read())
+            total = int(resp.headers.get("Content-Length") or 0)
+            read = 0
+            with open(dest, "wb") as out:
+                while chunk := resp.read(_CHUNK):
+                    out.write(chunk)
+                    read += len(chunk)
+                    if on_progress and total:
+                        on_progress(min(1.0, read / total))
+        if on_progress:
+            on_progress(1.0)
         return True
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         logger.warning("Update download failed: %s", exc)
@@ -128,6 +151,55 @@ def check_and_update(repo: str, current_version: str, *, is_frozen: bool) -> boo
     _relaunch_with(download, current_exe)
     logger.info("Update downloaded; relaunching into %s.", latest_tag)
     return True
+
+
+def run_update(repo: str, current_version: str, status: UpdateStatus, *, is_frozen: bool) -> None:
+    """Worker (run in a thread): drive the update and report progress via status.
+
+    Mutates ``status`` so the splash screen can animate. Fails open - on any
+    problem it sets an error/uptodate phase and returns; the app keeps running.
+    """
+    if not is_frozen:
+        status.phase = "disabled"
+        status.done = True
+        return
+    release = fetch_latest_release(repo)
+    if release is None:
+        _finish(status, "error")
+        return
+    tag = release.get("tag_name", "")
+    if not is_newer(tag, current_version):
+        _finish(status, "uptodate")
+        return
+    asset_url = _find_asset_url(release)
+    if asset_url is None:
+        logger.warning("Release %s has no %s asset.", tag, _ASSET_NAME)
+        _finish(status, "error")
+        return
+    _download_and_relaunch(asset_url, tag, current_version, status)
+
+
+def _download_and_relaunch(url: str, tag: str, current_version: str, status: UpdateStatus) -> None:
+    status.phase = "downloading"
+    status.target = tag
+    current_exe = Path(sys.executable)
+    dest = current_exe.parent / f"{_ASSET_NAME}.new"
+
+    def report(fraction: float) -> None:
+        status.progress = fraction
+
+    logger.info("Updating from v%s to %s ...", current_version, tag)
+    if not _download(url, dest, report):
+        _finish(status, "error")
+        return
+    _relaunch_with(dest, current_exe)
+    status.relaunch = True
+    _finish(status, "relaunching")
+
+
+def _finish(status: UpdateStatus, phase: str) -> None:
+    status.phase = phase
+    status.done = True
 
 
 def is_frozen() -> bool:

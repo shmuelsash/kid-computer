@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 _WINDOWED_SIZE = (1280, 800)
 
-# GetSystemMetrics indices for the virtual desktop (the union of all monitors).
+# GetSystemMetrics indices.
+_SM_CXSCREEN = 0  # primary monitor width
+_SM_CYSCREEN = 1  # primary monitor height
 _SM_XVIRTUALSCREEN = 76
 _SM_YVIRTUALSCREEN = 77
 _SM_CXVIRTUALSCREEN = 78
@@ -110,10 +112,15 @@ def _force_window_geometry(x: int, y: int, width: int, height: int) -> None:
         logger.warning("Could not force window geometry: %s", exc)
 
 
-def create_surface(fullscreen: bool) -> pygame.Surface:
-    """Create the drawing surface. Fullscreen spans every monitor on Windows."""
+def create_surface(fullscreen: bool) -> tuple[pygame.Surface, pygame.Rect]:
+    """Create the drawing surface and the primary-monitor rect (in surface coords).
+
+    The ui_rect is where chrome (settings card, exit hint/ring) is placed so it
+    lands on one screen instead of across a dual-monitor seam.
+    """
     if not fullscreen:
-        return pygame.display.set_mode(_WINDOWED_SIZE)
+        surface = pygame.display.set_mode(_WINDOWED_SIZE)
+        return surface, surface.get_rect()
 
     if sys.platform == "win32":
         x, y, width, height = _virtual_desktop_rect()
@@ -122,9 +129,12 @@ def create_surface(fullscreen: bool) -> pygame.Surface:
         surface = pygame.display.set_mode((width, height), pygame.NOFRAME)
         _force_window_geometry(x, y, width, height)
         logger.info("Display: %dx%d borderless spanning all monitors.", width, height)
-        return surface
+        # Primary monitor is at Windows (0,0); in surface coords that is (-x,-y).
+        metrics = ctypes.windll.user32.GetSystemMetrics
+        ui_rect = pygame.Rect(-x, -y, metrics(_SM_CXSCREEN), metrics(_SM_CYSCREEN))
+        return surface, ui_rect
 
     # Non-Windows fallback (dev only): primary-monitor fullscreen.
     surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     logger.info("Display: %dx%d fullscreen.", *surface.get_size())
-    return surface
+    return surface, surface.get_rect()
