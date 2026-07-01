@@ -20,6 +20,7 @@ from kidcomputer.audio import SoundBank
 from kidcomputer.config import GITHUB_REPO, Settings, SettingsStore
 from kidcomputer.display import create_surface, make_dpi_aware
 from kidcomputer.exit_watcher import ExitWatcher
+from kidcomputer.focus_guard import ForegroundGuard
 from kidcomputer.keyboard_lock import KeyboardLock
 from kidcomputer.logging_setup import setup_logging
 from kidcomputer.scene import Scene
@@ -139,6 +140,15 @@ def _draw_progress_bar(
 # --- main ---------------------------------------------------------------
 
 
+def _window_handle() -> int | None:
+    """Native HWND of the SDL window, or None if unavailable (non-Windows/dev)."""
+    try:
+        return pygame.display.get_wm_info().get("window")
+    except Exception as exc:  # noqa: BLE001 - handle lookup is best-effort
+        logger.warning("Could not get window handle: %s", exc)
+        return None
+
+
 def _log_startup(store: SettingsStore) -> None:
     logger.info(
         "Kid Computer starting | %s | python %s on %s | log_level=%s theme=%s mode=%s",
@@ -175,16 +185,20 @@ def main() -> int:
     state = {"running": True}
     lock = KeyboardLock()
     touchpad = TouchpadGestureLock()
+    guard = ForegroundGuard()
     try:
         pygame.event.set_grab(True)
         lock.start()
         touchpad.start()
+        guard.start(_window_handle())
         scene = Scene(
             screen.get_size(), ui_rect, sounds, store, on_exit=lambda: state.update(running=False)
         )
         scene.set_update_status(update_status)
         _run_loop(screen, scene, settings, state)
     finally:
+        # Stop the guard first so it isn't fighting the OS for focus during teardown.
+        guard.stop()
         lock.stop()
         touchpad.stop()
         pygame.event.set_grab(False)

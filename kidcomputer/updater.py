@@ -30,6 +30,9 @@ _API_TIMEOUT = 6.0
 _DOWNLOAD_TIMEOUT = 120.0
 _ASSET_NAME = "KidComputer.exe"
 _CHUNK = 64 * 1024
+# The pre-1.0.6 updater relaunched via this batch script. It could be left behind
+# (with an orphaned .new) when its swap failed - the mess this cleanup sweeps.
+_LEGACY_UPDATE_SCRIPT = "_kidcomputer_update.bat"
 
 
 @dataclass
@@ -126,8 +129,14 @@ def _old_path(current_exe: Path) -> Path:
 
 
 def cleanup_leftovers(exe_dir: Path) -> None:
-    """Delete stale update files (.old from a prior swap, abandoned .new)."""
-    for leftover in (exe_dir / f"{_ASSET_NAME}.old", exe_dir / f"{_ASSET_NAME}.new"):
+    """Delete stale update files: a prior swap's .old, an abandoned .new, and the
+    legacy batch script the pre-1.0.6 updater left behind when its swap failed."""
+    leftovers = (
+        exe_dir / f"{_ASSET_NAME}.old",
+        exe_dir / f"{_ASSET_NAME}.new",
+        exe_dir / _LEGACY_UPDATE_SCRIPT,
+    )
+    for leftover in leftovers:
         # The .old may briefly linger if AV holds it; ignore and retry next launch.
         with contextlib.suppress(OSError):
             leftover.unlink(missing_ok=True)

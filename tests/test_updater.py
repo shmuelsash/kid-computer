@@ -7,6 +7,7 @@ import pytest
 
 from kidcomputer.updater import (
     _ASSET_NAME,
+    _LEGACY_UPDATE_SCRIPT,
     _child_env,
     _find_asset_url,
     _is_valid_exe,
@@ -107,6 +108,16 @@ def test_cleanup_removes_leftovers(tmp_path: Path) -> None:
     assert not old.exists()
     assert not new.exists()
     assert keep.exists()  # the live exe is never touched
+
+
+def test_cleanup_removes_legacy_batch(tmp_path: Path) -> None:
+    # The pre-1.0.6 batch updater could leave this behind (the mess in the bug
+    # report); once on a new build, the next launch must sweep it.
+    script = _write(tmp_path / _LEGACY_UPDATE_SCRIPT, b"@echo off")
+    keep = _write(tmp_path / _ASSET_NAME, b"x")
+    cleanup_leftovers(tmp_path)
+    assert not script.exists()
+    assert keep.exists()
 
 
 def test_old_path_naming(tmp_path: Path) -> None:

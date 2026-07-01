@@ -61,6 +61,17 @@ are carried over:
   restored on exit** (`TouchpadGestureLock.stop` in the `finally`). Three/four-
   finger swipes aren't keyboard events, so the hook can't see them; we toggle the
   per-user setting instead. Never leave them disabled after the app exits.
+  **The registry toggle usually only applies after a sign-out**, so it is NOT
+  sufficient on its own - see the foreground guard below.
+
+- **The foreground guard is what actually stops gesture escapes mid-session**
+  (`ForegroundGuard`, `focus_guard.py`). A watchdog thread re-pins our window
+  topmost and reclaims focus whenever something else steals it (switch-apps /
+  show-desktop / Task View gestures the hook and registry can't block in real
+  time). It MUST be stopped FIRST in the `finally` (`guard.stop()` before
+  `lock.stop()`), or it fights the OS for focus while the app is trying to exit.
+  It fails open - any error is logged and swallowed, never freezing input or the
+  exit combo.
 
 ## What can't be blocked (by Windows design)
 
@@ -71,7 +82,8 @@ Don't try to "fix" this with registry/Group-Policy hacks unless explicitly asked
 ## Layout
 
 - `kidcomputer/` - package: `app` (loop), `display` (DPI + multi-monitor),
-  `keyboard_lock`, `exit_watcher`, `scene`, `effects`, `audio`, `updater`,
+  `keyboard_lock`, `touchpad`, `focus_guard`, `exit_watcher`, `scene`, `effects`,
+  `audio`, `updater`,
   `config`, `logging_setup`, `buildinfo`.
 - `tests/` - pytest, headless (SDL dummy drivers).
 - `.github/workflows/` - `ci.yml` (gate) and `release.yml` (gate -> build -> release).
