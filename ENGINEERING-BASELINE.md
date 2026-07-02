@@ -172,8 +172,9 @@ without guessing.
 - **ADRs for non-obvious decisions:** a short `docs/adr/NNN-title.md` (context /
   decision / consequences). One paragraph is fine — the point is future-you knows
   *why*.
-- Keep the `CLAUDE.md` baseline block in every repo so the rules auto-load each
-  session.
+- Keep the `AGENTS.md` baseline block in every repo (with the `CLAUDE.md` stub that
+  imports it) so the rules auto-load each session. `AGENTS.md` is the source of truth;
+  `CLAUDE.md` just imports it for Claude Code.
 
 ---
 *Companion to SECURITY-BASELINE.md and FRONTEND-BASELINE.md. Defaults you may tune per

@@ -35,6 +35,7 @@ distributed exe self-update with no embedded token. See
 
 ## Consequences
 - The security surface shrinks to: don't leave the keyboard locked, fail-open
-  updates, ASCII-only scripts. These are captured as invariants in `CLAUDE.md`.
+  updates, ASCII-only scripts. These are captured as invariants in `AGENTS.md`
+  (which `CLAUDE.md` imports).
 - A future networked feature (telemetry, remote config) would reintroduce parts
   of the security baseline and needs its own ADR.
