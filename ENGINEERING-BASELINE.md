@@ -164,6 +164,11 @@ without guessing.
 - **PR checklist** (`.github/pull_request_template.md`): security baseline not
   regressed · tests pass · lint + types clean · mobile **and** desktop both updated
   (UI changes) · docs updated. Squash-merge; never force-push `main`.
+- **Branch hygiene:** enable **"Automatically delete head branches"** so merged PR
+  branches remove themselves (`gh repo edit <owner>/<repo> --delete-branch-on-merge`),
+  and set `git config --global fetch.prune true` so stale remote-tracking refs are pruned
+  every fetch. Squash-merged branches aren't detected locally (`git branch -d` can't tell) —
+  prune them periodically (e.g. `Sync-Repos.ps1 -PruneGone`), never let them pile up.
 
 ## 11. Documentation & decisions
 - **README is required** and documents: what the app is, how to run / build it locally
@@ -173,8 +178,7 @@ without guessing.
   decision / consequences). One paragraph is fine — the point is future-you knows
   *why*.
 - Keep the `AGENTS.md` baseline block in every repo (with the `CLAUDE.md` stub that
-  imports it) so the rules auto-load each session. `AGENTS.md` is the source of truth;
-  `CLAUDE.md` just imports it for Claude Code.
+  imports it) so the rules auto-load each session.
 
 ---
 *Companion to SECURITY-BASELINE.md and FRONTEND-BASELINE.md. Defaults you may tune per
