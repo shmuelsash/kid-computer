@@ -88,4 +88,21 @@ Don't try to "fix" this with registry/Group-Policy hacks unless explicitly asked
 - `tests/` - pytest, headless (SDL dummy drivers).
 - `.github/workflows/` - `ci.yml` (gate) and `release.yml` (gate -> build -> release).
 
-@ENVIRONMENT.md
+<!-- KIT:START - managed by repo-starter-kit/kit-sync.ps1. Edit KIT-BLOCK.md in the kit, not here. -->
+## Fleet standards (repo-starter-kit)
+
+Write to these the first time - CI, audits and review are backstops, not where problems get found.
+
+- **Always on (every repo):** [ENVIRONMENT](https://github.com/shmuelsash/repo-starter-kit/blob/main/ENVIRONMENT.md)
+  (uv for Python, project-local Node, never touch PATH) and
+  [LOGGING](https://github.com/shmuelsash/repo-starter-kit/blob/main/LOGGING.md)
+  (`LOG_LEVEL`, startup line, no secrets in logs). Claude Code loads both from the global config.
+- **Modules:** the `*-BASELINE.md` / `PARITY-CHECKLIST.md` files in this repo's root are the
+  modules it uses. Read the matching file *before* touching that area:
+  - auth, sessions, secrets, Dockerfile, compose, external input -> `SECURITY-BASELINE.md`
+  - any UI, CSS, settings menu -> `FRONTEND-BASELINE.md` + `PARITY-CHECKLIST.md`
+    (mobile AND desktop in the same change; no hardcoded colors/sizes)
+  - structure, CI gate, tests, health, versioning, deps, git/PR -> `ENGINEERING-BASELINE.md`
+- **CodeGraph:** if `.codegraph/` exists, use it before grep/Read. If it doesn't, run `codegraph init`.
+- A file listed above that this repo doesn't carry doesn't apply here.
+<!-- KIT:END -->

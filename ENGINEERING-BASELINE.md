@@ -106,6 +106,11 @@ not the first.
 - Expose **`/healthz`** (or `/health`) returning 200 + app version + a quick check of
   critical deps (e.g. DB reachable). Wire it into the compose **`healthcheck:`** so
   restarts and the reverse proxy can tell live from dead.
+- **The deploy's post-restart health check must poll, not `sleep N` once.** A fixed
+  sleep then a single `curl` flakes the deploy whenever a cold start (DB migrate, WAL
+  checkpoint, model/OCR init) runs past the wait — the container comes up healthy but
+  the deploy is already marked failed. Retry-loop it: poll every 5s for up to ~120s,
+  pass on the first 200 (`for i in $(seq 1 24); do curl -sf … && exit 0; sleep 5; done`).
 - **Validate required config at startup** — a missing / invalid required value
   (signing key, DB path, required secret) **fails closed** at boot with a clear log
   line, never a silent default (matches SECURITY-BASELINE → Secrets).
@@ -148,6 +153,16 @@ without guessing.
      build date, channel.
 - **Bump `VERSION` (or the tag) on meaningful releases;** the SHA changes every build
   automatically, so provenance is never stale.
+- **Prune old GHCR image versions.** Every push builds a new `:sha-<short>` image
+  alongside `:latest` for rollback — with no cleanup that accumulates forever and
+  exhausts the account's shared Actions+Packages storage quota (500MB free tier,
+  shared across all your repos). The `build` job must also disable the per-build
+  artifact upload (`DOCKER_BUILD_SUMMARY: false` env on the `docker/build-push-action`
+  step — it's not needed since build metadata is already baked into OCI labels) and a
+  `cleanup` job (`needs: deploy` — **not** `build`, or it races deploy's own pull of
+  the image it's pruning) must prune old container versions with
+  `actions/delete-package-versions@v5`, `min-versions-to-keep: 10`. See
+  `templates/deploy-ghcr-cleanup-job.yml` for the exact job to append to `deploy.yml`.
 
 ## 9. Dependencies
 - **Commit lockfiles** — `uv.lock`, `package-lock.json`, `go.sum`. Builds are
